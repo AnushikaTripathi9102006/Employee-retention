@@ -1,20 +1,15 @@
 import streamlit as st
-import pickle
 import pandas as pd
+from sklearn.linear_model import LogisticRegression
 
 # -----------------------------
 # Page Configuration
 # -----------------------------
 st.set_page_config(
-    page_title="HR Employee Retention Predictor",
+    page_title="HR Employee Retention Prediction",
     page_icon="👨‍💼",
-    layout="centered"
+    layout="wide"
 )
-
-# -----------------------------
-# Load Model
-# -----------------------------
-model = pickle.load(open("model.pkl", "rb"))
 
 # -----------------------------
 # Custom CSS
@@ -23,49 +18,28 @@ st.markdown("""
 <style>
 
 .stApp{
-    background: linear-gradient(135deg,#141E30,#243B55);
+    background: linear-gradient(to right,#eef2f3,#d9e4f5);
 }
 
-.main-title{
-    text-align:center;
-    color:white;
-    font-size:42px;
-    font-weight:bold;
+h1{
+    color:#0B5ED7;
 }
 
-.sub-title{
-    text-align:center;
-    color:#dddddd;
-    font-size:18px;
-    margin-bottom:30px;
-}
-
-div[data-testid="stForm"]{
-    background-color:rgba(255,255,255,0.08);
-    padding:30px;
-    border-radius:20px;
-    box-shadow:0px 10px 25px rgba(0,0,0,0.3);
-}
-
-.stButton>button{
+div.stButton > button{
     width:100%;
-    border-radius:10px;
-    background:#00C6FF;
+    background:#0B5ED7;
     color:white;
+    border-radius:10px;
+    height:50px;
     font-size:18px;
     font-weight:bold;
 }
 
-.stButton>button:hover{
-    background:#0072FF;
-    color:white;
-}
-
-.result-box{
+.result{
     padding:20px;
-    border-radius:15px;
+    border-radius:12px;
     text-align:center;
-    font-size:22px;
+    font-size:26px;
     font-weight:bold;
 }
 
@@ -73,96 +47,140 @@ div[data-testid="stForm"]{
 """, unsafe_allow_html=True)
 
 # -----------------------------
+# Load Dataset
+# -----------------------------
+@st.cache_resource
+def train_model():
+
+    df = pd.read_csv("HR_comma_sep.csv")
+
+    subdf = df[['satisfaction_level',
+                'average_montly_hours',
+                'promotion_last_5years',
+                'salary']]
+
+    salary_dummies = pd.get_dummies(subdf.salary, prefix="salary")
+
+    X = pd.concat([subdf, salary_dummies], axis=1)
+    X.drop("salary", axis=1, inplace=True)
+
+    y = df["left"]
+
+    model = LogisticRegression(max_iter=1000)
+    model.fit(X, y)
+
+    return model, X.columns
+
+model, columns = train_model()
+
+# -----------------------------
 # Title
 # -----------------------------
-st.markdown("<div class='main-title'>👨‍💼 HR Employee Retention Predictor</div>",
-            unsafe_allow_html=True)
+st.title("👨‍💼 HR Employee Retention Prediction")
+st.write("Predict whether an employee is likely to leave the company.")
 
-st.markdown("<div class='sub-title'>Predict whether an employee is likely to leave the company.</div>",
-            unsafe_allow_html=True)
+st.divider()
 
-# -----------------------------
-# Input Form
-# -----------------------------
-with st.form("prediction_form"):
+col1, col2 = st.columns(2)
+
+with col1:
 
     satisfaction = st.slider(
-        "Satisfaction Level",
-        0.0,
-        1.0,
-        0.50,
-        0.01
+        "😊 Satisfaction Level",
+        0.00,
+        1.00,
+        0.50
     )
 
-    hours = st.slider(
-        "Average Monthly Hours",
-        80,
+    monthly_hours = st.slider(
+        "⏰ Average Monthly Hours",
+        90,
         320,
         200
     )
 
+with col2:
+
     promotion = st.selectbox(
-        "Promotion in Last 5 Years",
-        ["No","Yes"]
+        "🏆 Promotion in Last 5 Years",
+        [0,1]
     )
 
     salary = st.selectbox(
-        "Salary Level",
-        ["Low","Medium","High"]
+        "💰 Salary",
+        ["low","medium","high"]
     )
-
-    predict = st.form_submit_button("Predict")
 
 # -----------------------------
 # Prediction
 # -----------------------------
-if predict:
 
-    promotion = 1 if promotion=="Yes" else 0
+if st.button("Predict"):
 
-    salary_high = 1 if salary=="High" else 0
-    salary_low = 1 if salary=="Low" else 0
-    salary_medium = 1 if salary=="Medium" else 0
+    data = {
+        'satisfaction_level': satisfaction,
+        'average_montly_hours': monthly_hours,
+        'promotion_last_5years': promotion,
+        'salary_high':0,
+        'salary_low':0,
+        'salary_medium':0
+    }
 
-    X = pd.DataFrame([{
-        "satisfaction_level": satisfaction,
-        "average_montly_hours": hours,
-        "promotion_last_5years": promotion,
-        "salary_high": salary_high,
-        "salary_low": salary_low,
-        "salary_medium": salary_medium
-    }])
+    data[f"salary_{salary}"] = 1
 
-    prediction = model.predict(X)[0]
-    probability = model.predict_proba(X)[0][1] * 100
+    input_df = pd.DataFrame([data])
 
-    st.divider()
+    input_df = input_df.reindex(columns=columns, fill_value=0)
+
+    prediction = model.predict(input_df)[0]
+
+    probability = model.predict_proba(input_df)[0]
 
     st.subheader("Prediction Result")
 
     if prediction == 1:
 
-        st.markdown(
-            f"""
-            <div class="result-box"
-            style="background:#ffebee;color:#c62828;">
-            ⚠️ Employee is Likely to Leave
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown("""
+        <div class="result" style="background:#ffd6d6;color:#c1121f;">
+        ⚠️ Employee is likely to LEAVE the company.
+        </div>
+        """, unsafe_allow_html=True)
 
     else:
 
-        st.markdown(
-            """
-            <div class="result-box"
-            style="background:#e8f5e9;color:#2e7d32;">
-            ✅ Employee is Likely to Stay
-            </div>
-            """,
-            unsafe_allow_html=True,
+        st.markdown("""
+        <div class="result" style="background:#d8f3dc;color:#1b4332;">
+        ✅ Employee is likely to STAY in the company.
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.write("")
+
+    st.progress(float(max(probability)))
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.metric(
+            "Stay Probability",
+            f"{probability[0]*100:.2f}%"
         )
 
-    st.progress(min(probability/100, 1.0))
-    st.metric("Probability of Leaving", f"{probability:.2f}%")
+    with c2:
+        st.metric(
+            "Leave Probability",
+            f"{probability[1]*100:.2f}%"
+        )
+
+st.divider()
+
+st.subheader("📊 Features Used")
+
+st.write("""
+- Satisfaction Level
+- Average Monthly Hours
+- Promotion in Last 5 Years
+- Salary Level
+""")
+
+st.info("Model: Logistic Regression")
